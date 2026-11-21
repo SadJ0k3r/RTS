@@ -1,0 +1,283 @@
+// ==UserScript==
+// @name         RemoteTech - Problems/Repairs Searchbox with Autocomplete + Auto Focus
+// @namespace    http://tampermonkey.net/
+// @version      2.0
+// @description  Searchable Problems/Repairs dropdowns with autocomplete, auto-clear, and focus switching.
+// @author       You
+// @match        *://rts.systronics-pr.com/RTS/calldetails/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    const searchBoxes = {};
+
+    injectStyles();
+    setupObserver();
+
+    function injectStyles() {
+
+        if (document.getElementById('dropdownSearchStyles')) return;
+
+        const style = document.createElement('style');
+
+        style.id = 'dropdownSearchStyles';
+
+        style.textContent = `
+            .dropdown-searchbox{
+                box-sizing:border-box;
+                width:100%;
+                max-width:460px;
+                padding:.7em 1.3em;
+                font-size:1.07rem;
+                margin-bottom:8px;
+                border-radius:7px;
+                border:1px solid #cfd8dc;
+                background:#f5f7fa;
+                outline:none;
+                box-shadow:0 2px 7px rgba(44,83,100,.10);
+            }
+
+            .autocomplete-list{
+                position:absolute;
+                top:100%;
+                left:0;
+                right:0;
+                z-index:9999;
+                background:#fff;
+                border:1px solid #90caf9;
+                border-radius:0 0 6px 6px;
+                max-height:210px;
+                overflow-y:auto;
+                box-shadow:0 4px 12px rgba(44,83,100,.13);
+            }
+
+            .autocomplete-item{
+                padding:8px 16px;
+                cursor:pointer;
+            }
+
+            .autocomplete-item.active,
+            .autocomplete-item:hover{
+                background:#90caf9;
+                color:#294962;
+            }
+
+            @media(max-width:650px){
+                .dropdown-searchbox{
+                    max-width:98vw;
+                    padding:.51em .7em;
+                    font-size:.99rem;
+                }
+            }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    function setupObserver() {
+
+        const observer = new MutationObserver(setupDropdowns);
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        setupDropdowns();
+    }
+
+    function setupDropdowns() {
+
+        const selects = [...document.querySelectorAll('select')];
+
+        const problemSelect = selects.find(
+            s => s.options[0]?.textContent?.toLowerCase().includes('choose problem')
+        );
+
+        const repairSelect = selects.find(
+            s => s.options[0]?.textContent?.toLowerCase().includes('choose repair')
+        );
+
+        createAutocomplete(problemSelect, 'Problem');
+        createAutocomplete(repairSelect, 'Repair');
+    }
+
+    function createAutocomplete(selectElem, label) {
+
+        if (!selectElem || selectElem.dataset.autocompleteReady) return;
+
+        selectElem.dataset.autocompleteReady = 'true';
+
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+
+        selectElem.parentNode.insertBefore(wrapper, selectElem);
+
+        const search = document.createElement('input');
+
+        search.type = 'search';
+        search.className = 'dropdown-searchbox';
+        search.placeholder = `🔍 Search ${label}...`;
+
+        searchBoxes[label] = search;
+
+        wrapper.append(search, selectElem);
+
+        const list = document.createElement('div');
+        list.className = 'autocomplete-list';
+        list.style.display = 'none';
+
+        wrapper.appendChild(list);
+
+        let activeIndex = -1;
+
+        function getOptions() {
+            return [...selectElem.options].map(opt => ({
+                value: opt.value,
+                text: opt.textContent.trim()
+            }));
+        }
+
+        function clearSearch() {
+            search.value = '';
+            hideList();
+        }
+
+        function hideList() {
+            list.style.display = 'none';
+        }
+
+        function moveFocus() {
+
+            const nextBox =
+                label === 'Problem'
+                    ? searchBoxes.Repair
+                    : searchBoxes.Problem;
+
+            nextBox?.focus();
+        }
+
+        function selectItem(item) {
+
+            selectElem.value = item.value;
+
+            ['input', 'change'].forEach(evt =>
+                selectElem.dispatchEvent(
+                    new Event(evt, { bubbles: true })
+                )
+            );
+
+            clearSearch();
+
+            setTimeout(moveFocus, 150);
+        }
+
+        function renderMatches(query) {
+
+            const matches = getOptions().filter(option =>
+                option.text.toLowerCase().includes(query)
+            );
+
+            list.innerHTML = '';
+
+            if (!query || !matches.length) {
+                hideList();
+                return;
+            }
+
+            matches.forEach(item => {
+
+                const row = document.createElement('div');
+
+                row.className = 'autocomplete-item';
+                row.textContent = item.text;
+
+                row.addEventListener('click', () =>
+                    selectItem(item)
+                );
+
+                list.appendChild(row);
+            });
+
+            list.style.display = 'block';
+        }
+
+        search.addEventListener('input', e => {
+
+            activeIndex = -1;
+
+            renderMatches(
+                e.target.value.trim().toLowerCase()
+            );
+        });
+
+        search.addEventListener('keydown', e => {
+
+            const items = [...list.children];
+
+            if (!items.length) return;
+
+            if (e.key === 'ArrowDown') {
+
+                e.preventDefault();
+
+                activeIndex = Math.min(
+                    activeIndex + 1,
+                    items.length - 1
+                );
+
+                updateActive(items);
+            }
+
+            if (e.key === 'ArrowUp') {
+
+                e.preventDefault();
+
+                activeIndex = Math.max(
+                    activeIndex - 1,
+                    0
+                );
+
+                updateActive(items);
+            }
+
+            if (e.key === 'Enter') {
+
+                e.preventDefault();
+
+                items[activeIndex]?.click();
+            }
+
+            if (e.key === 'Escape') {
+                hideList();
+            }
+        });
+
+        search.addEventListener('focus', () => {
+
+            const val = search.value.trim().toLowerCase();
+
+            if (val) {
+                renderMatches(val);
+            }
+        });
+
+        wrapper.addEventListener('click', e => {
+            e.stopPropagation();
+        });
+
+        document.addEventListener('click', hideList);
+
+        function updateActive(items) {
+
+            items.forEach(item =>
+                item.classList.remove('active')
+            );
+
+            items[activeIndex]?.classList.add('active');
+            items[activeIndex]?.focus();
+        }
+    }
+})();
