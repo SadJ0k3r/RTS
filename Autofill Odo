@@ -1,0 +1,56 @@
+// ==UserScript==
+// @name         RemoteTech - Fill Start Odometer with 10 (All Views)
+// @namespace    http://tampermonkey.net/
+// @version      1.4
+// @description  Adds a 'Fill with 10' button next to Start Odometer on all applicable pages in RemoteTech (Summary + Modal). Hides Load Previous if it exists.
+// @author       SadJ0k3r
+// @match        *://rts.systronics-pr.com/RTS/calldetails/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    function injectButtonAnywhere() {
+        // Target input with id="odometer" OR name="odometer" OR label "Start Odometer"
+        const odometerInput = document.querySelector('input[name="odometer"], input#odometer');
+
+        // Avoid duplication
+        if (!odometerInput || document.getElementById('fillWith10Btn')) return;
+
+        // Create the new button
+        const fillBtn = document.createElement('button');
+        fillBtn.textContent = 'Fill with 10';
+        fillBtn.id = 'fillWith10Btn';
+        fillBtn.className = 'btn';
+        fillBtn.style.marginLeft = '10px';
+        fillBtn.style.padding = '4px 10px';
+        fillBtn.style.fontSize = '12px';
+        fillBtn.style.cursor = 'pointer';
+
+        // Fill value when clicked
+        fillBtn.onclick = () => {
+            odometerInput.value = '10';
+
+            // Notify AngularJS of changes
+            const event = new Event('input', { bubbles: true });
+            odometerInput.dispatchEvent(event);
+            const changeEvent = new Event('change', { bubbles: true });
+            odometerInput.dispatchEvent(changeEvent);
+        };
+
+        // Insert after the input
+        odometerInput.parentNode.insertBefore(fillBtn, odometerInput.nextSibling);
+    }
+
+    // Run once immediately
+    injectButtonAnywhere();
+
+    // Also watch for dynamic changes
+    const observer = new MutationObserver(() => {
+        injectButtonAnywhere();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+})();
