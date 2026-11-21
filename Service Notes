@@ -1,0 +1,53 @@
+    notesContainer.style.margin = '10px 0';
+    notesContainer.style.width = '100%';
+
+    // Label
+    const label = document.createElement('label');
+    label.textContent = 'Service Call Notes';
+    label.style.fontWeight = 'bold';
+    label.style.display = 'block';
+    label.style.marginBottom = '4px';
+
+    // Textarea
+    const notesTextarea = document.createElement('textarea');
+    notesTextarea.placeholder = 'Click to add notes for this service call...';
+    notesTextarea.style.width = '100%';
+    notesTextarea.style.minHeight = '60px';
+    notesTextarea.style.padding = '8px';
+    notesTextarea.style.borderRadius = '4px';
+    notesTextarea.style.border = '1px solid #ccc';
+    notesTextarea.style.resize = 'vertical';
+    if (savedNotes) notesTextarea.value = savedNotes;
+
+    // Saved indicator
+    const savedIndicator = document.createElement('div');
+    savedIndicator.style.fontSize = '12px';
+    savedIndicator.style.color = '#4CAF50';
+    savedIndicator.style.marginTop = '4px';
+
+    // Save & feedback on input
+    notesTextarea.addEventListener('input', () => {
+        localStorage.setItem(storageKey, notesTextarea.value);
+        savedIndicator.textContent = '💾 Saved!';
+        clearTimeout(savedIndicator._timeout);
+        savedIndicator._timeout = setTimeout(() => {
+            savedIndicator.textContent = '';
+        }, 1500);
+    });
+
+    // Focus boost
+    notesTextarea.addEventListener('click', e => {
+        e.stopPropagation();
+        notesTextarea.focus();
+    });
+
+    // Inject to page
+    notesContainer.appendChild(label);
+    notesContainer.appendChild(notesTextarea);
+    notesContainer.appendChild(savedIndicator);
+
+    const insertBeforeElement = footer.querySelector('.subtext') || footer.firstChild;
+    footer.insertBefore(notesContainer, insertBeforeElement);
+
+    console.log('✅ RemoteTech Service Notes loaded');
+})();
