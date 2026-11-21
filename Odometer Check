@@ -1,0 +1,263 @@
+// ==UserScript==
+// @name         RTS Call Details – Labor UX & Odometer Check
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Mejora el bloque Labor, calcula distancia recorrida y valida End Odometer.
+// @match        https://rts.systronics-pr.com/RTS/calldetails/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        const laborFieldset = document.getElementById('labor');
+        if (!laborFieldset) return;
+
+        const dispatchEl = document.getElementById('dispatchtime');
+        const arriveEl = document.getElementById('arrivaltime');
+        const departEl = document.getElementById('departuretime');
+        const startOdoEl = document.getElementById('startodometer');
+        const endOdoEl = document.getElementById('endodometer');
+
+        if (!dispatchEl || !arriveEl || !departEl || !startOdoEl || !endOdoEl) return;
+
+        const dispatchStr = dispatchEl.textContent.trim();
+        const arriveStr = arriveEl.textContent.trim();
+        const departStr = departEl.textContent.trim();
+
+        const startOdo = parseFloat(startOdoEl.textContent.trim());
+        const endOdo = parseFloat(endOdoEl.textContent.trim());
+
+        const durations = computeDurations(dispatchStr, arriveStr, departStr);
+        const distance = isFinite(startOdo) && isFinite(endOdo)
+        ? endOdo - startOdo
+        : null;
+
+        const issues = [];
+        if (distance !== null) {
+            if (distance < 0) {
+                issues.push('End odometer is lower than start odometer.');
+            } else if (distance === 0) {
+                issues.push('Distance traveled is 0; verify odometer values.');
+            }
+        }
+
+        injectStyle();
+        enhanceLaborUI(laborFieldset, {
+            dispatchStr,
+            arriveStr,
+            departStr,
+            durations,
+            startOdo,
+            endOdo,
+            distance,
+            issues
+        });
+    }
+
+    // ---------- Duraciones ----------
+    function computeDurations(dispatchStr, arriveStr, departStr) {
+        const d = parseUSDate(dispatchStr);
+        const a = parseUSDate(arriveStr);
+        const dep = parseUSDate(departStr);
+
+        function diffMinutes(start, end) {
+            if (!start || !end) return null;
+            const ms = end - start;
+            if (!isFinite(ms) || ms < 0) return null;
+            return Math.round(ms / 60000);
+        }
+
+        const legDispatchToArrive = diffMinutes(d, a);
+        const legArriveToDepart = diffMinutes(a, dep);
+        const totalDispatchToDepart = diffMinutes(d, dep);
+
+        return {
+            legDispatchToArrive,
+            legArriveToDepart,
+            totalDispatchToDepart
+        };
+    }
+
+    // "12/15/25 8:42 AM" -> Date
+    function parseUSDate(str) {
+        if (!str) return null;
+        // Normalizamos a mm/dd/yyyy hh:mm AM
+        const parts = str.split(' ');
+        if (parts.length < 3) return null;
+
+        const [m, d, yShort] = parts[0].split('/').map(Number);
+        if (!m || !d || !yShort) return null;
+
+        const yFull = yShort < 50 ? 2000 + yShort : 1900 + yShort;
+        const timeStr = parts[1] + ' ' + parts[2];
+
+        return new Date(`${m}/${d}/${yFull} ${timeStr}`);
+    }
+
+    // ---------- UI ----------
+    function injectStyle() {
+        const css = `
+        #labor {
+            position: relative;
+        }
+
+        .rts-labor-card {
+            margin: 0.75rem 0 1rem;
+            padding: 0.9rem 1rem;
+            border-radius: 12px;
+            background: #f9fafb;
+            border: 1px solid rgba(148,163,184,0.7);
+        }
+
+        .rts-labor-summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0.4rem;
+        }
+
+        .rts-labor-summary-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .rts-labor-summary-meta {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        .rts-labor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit,minmax(150px,1fr));
+            gap: 0.6rem;
+            margin-top: 0.5rem;
+        }
+
+        .rts-labor-pill {
+            padding: 0.25rem 0.5rem;
+            border-radius: 10px;
+            background: #eef2ff;
+            font-size: 0.8rem;
+            color: #1d4ed8;
+        }
+
+        .rts-labor-pill strong {
+            font-weight: 600;
+        }
+
+        .rts-labor-distance-ok {
+            background: #ecfdf3;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .rts-labor-distance-warn {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #facc15;
+        }
+
+        .rts-labor-distance-err {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+
+        .rts-labor-issues {
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: #b91c1c;
+        }
+        `;
+        const style = document.createElement('style');
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    function enhanceLaborUI(laborFieldset, data) {
+        const h2 = laborFieldset.querySelector('h2');
+        if (!h2) return;
+
+        const card = document.createElement('div');
+        card.className = 'rts-labor-card';
+
+        const distanceClass =
+              data.distance == null
+        ? ''
+        : data.distance < 0
+        ? 'rts-labor-distance-err'
+        : data.distance === 0
+        ? 'rts-labor-distance-warn'
+        : 'rts-labor-distance-ok';
+
+        const distanceLabel =
+              data.distance == null ? 'N/A' : `${data.distance} units`;
+
+        card.innerHTML = `
+            <div class="rts-labor-summary-header">
+                <div class="rts-labor-summary-title">Labor summary</div>
+                <div class="rts-labor-summary-meta">
+                    Dispatch: ${escapeHTML(data.dispatchStr)} · Arrive: ${escapeHTML(
+            data.arriveStr
+        )} · Depart: ${escapeHTML(data.departStr)}
+                </div>
+            </div>
+            <div class="rts-labor-grid">
+                <div class="rts-labor-pill">
+                    <strong>Start Odo:</strong> ${isFinite(data.startOdo) ? data.startOdo : 'N/A'}
+                </div>
+                <div class="rts-labor-pill ${distanceClass}">
+                    <strong>End Odo:</strong> ${
+                        isFinite(data.endOdo) ? data.endOdo : 'N/A'
+    } &nbsp;·&nbsp; <strong>Distance:</strong> ${distanceLabel}
+                </div>
+                <div class="rts-labor-pill">
+                    <strong>Travel:</strong> ${
+                        data.durations.legDispatchToArrive != null
+            ? data.durations.legDispatchToArrive + ' min'
+        : 'N/A'
+    }
+                </div>
+                <div class="rts-labor-pill">
+                    <strong>On Site:</strong> ${
+                        data.durations.legArriveToDepart != null
+            ? data.durations.legArriveToDepart + ' min'
+        : 'N/A'
+    }
+                </div>
+                <div class="rts-labor-pill">
+                    <strong>Total:</strong> ${
+                        data.durations.totalDispatchToDepart != null
+            ? data.durations.totalDispatchToDepart + ' min'
+        : 'N/A'
+    }
+                </div>
+            </div>
+        `;
+
+        if (data.issues && data.issues.length) {
+            const issues = document.createElement('div');
+            issues.className = 'rts-labor-issues';
+            issues.textContent = data.issues.join(' ');
+            card.appendChild(issues);
+        }
+
+        h2.insertAdjacentElement('afterend', card);
+    }
+
+    function escapeHTML(str) {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+})();
