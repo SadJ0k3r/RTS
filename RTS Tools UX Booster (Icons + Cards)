@@ -1,0 +1,268 @@
+// ==UserScript==
+// @name         RTS Tools UX Booster (Icons + Cards)
+// @namespace    https://github.com/SadJ0k3r/RTS
+// @version      1.1.0
+// @description  UI moderna para la pagina de herramientas con iconos y tarjetas clicables.
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=systronics-pr.com
+// @match        https://rts.systronics-pr.com/RTS/online/ptools.aspx
+// @updateURL    https://raw.githubusercontent.com/SadJ0k3r/RTS/main/rts-tools-ux-booster.user.js
+// @downloadURL  https://raw.githubusercontent.com/SadJ0k3r/RTS/main/rts-tools-ux-booster.user.js
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    const HELP_URL = 'http://webhelp.e-automate.com/RT/230/Index.htm';
+
+    const ICONS = {
+        'Item Lookup': '🔍',
+        'Call Search': '☎️',
+        'Manage Inventory': '📦',
+        'Fax Test': '📠',
+        'Create Call': '➕',
+        'Invoice Info': '🧾',
+        'Time Entry': '⏱️',
+        'Change password': '🔐',
+        'User Data': '👤',
+        'Help': '❓',
+        'Calls': '📋'
+    };
+
+    const HINTS = {
+        'Item Lookup': 'Buscar articulos por numero o descripcion.',
+        'Call Search': 'Buscar llamadas existentes o historicas.',
+        'Manage Inventory': 'Revisar y ajustar inventario de partes.',
+        'Fax Test': 'Enviar pruebas de fax para diagnostico.',
+        'Create Call': 'Registrar una nueva llamada de servicio.',
+        'Invoice Info': 'Consultar detalles de facturas.',
+        'Time Entry': 'Registrar tiempo de servicio y desplazamiento.',
+        'Change password': 'Actualizar tu contrasena de RTS.',
+        'User Data': 'Ver o limpiar datos temporales de usuario.',
+        'Help': 'Abrir la ayuda en linea de RemoteTech.',
+        'Calls': 'Volver a la lista de llamadas.'
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        if (document.querySelector('.rts-tools-container')) return;
+
+        const toolsTable = document.querySelector('table.pCelledTable');
+        if (!toolsTable || !toolsTable.parentElement) return;
+
+        const items = extractItemsFromTable(toolsTable);
+        if (!items.length) return;
+
+        injectStyle();
+
+        const container = buildUI();
+        toolsTable.parentElement.insertBefore(container, toolsTable);
+        toolsTable.style.display = 'none';
+
+        const mainList = container.querySelector('#rts-main-list');
+        renderList(mainList, items, '');
+    }
+
+    function extractItemsFromTable(table) {
+        const inputs = table.querySelectorAll('input[type="submit"], input[type="button"]');
+        const items = [];
+
+        inputs.forEach(input => {
+            const label = (input.value || '').trim();
+            if (!label) return;
+
+            items.push({
+                label,
+                id: input.id || null,
+                disabled: Boolean(input.disabled),
+                node: input,
+                isHelp: input.name === 'helpbutton' || label === 'Help'
+            });
+        });
+
+        return items;
+    }
+
+    function injectStyle() {
+        if (document.getElementById('rts-tools-ux-style')) return;
+
+        const css = `
+            body {
+                font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+                background: #f4f6f8 !important;
+            }
+
+            .rts-tools-container {
+                max-width: 900px;
+                margin: 2rem auto;
+                padding: 1.75rem;
+                background: #ffffff;
+                border-radius: 16px;
+                box-shadow: 0 8px 28px rgba(15, 23, 42, 0.18);
+            }
+
+            .rts-tools-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                margin-bottom: 1.25rem;
+                gap: 0.75rem;
+            }
+
+            .rts-tools-title {
+                font-size: 1.6rem;
+                font-weight: 600;
+                color: #1f2933;
+            }
+
+            .rts-tools-subtitle {
+                font-size: 0.85rem;
+                color: #7b8794;
+            }
+
+            .rts-tools-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 0.75rem;
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }
+
+            .rts-tool-item {
+                margin: 0;
+                padding: 0;
+            }
+
+            .rts-tool-link {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 0.8rem 0.9rem;
+                border-radius: 10px;
+                text-decoration: none;
+                color: #1f2933;
+                background: #f8fafc;
+                border: 1px solid rgba(148, 163, 184, 0.4);
+                transition:
+                    background 0.15s ease,
+                    border-color 0.15s ease,
+                    transform 0.05s ease,
+                    box-shadow 0.15s ease;
+            }
+
+            .rts-tool-link:hover {
+                background: #e6f0fa;
+                border-color: #4c6fff;
+                box-shadow: 0 3px 12px rgba(37, 99, 235, 0.25);
+            }
+
+            .rts-tool-link:active {
+                transform: translateY(1px);
+                box-shadow: 0 1px 6px rgba(15, 23, 42, 0.25);
+            }
+
+            .rts-tool-link.disabled {
+                background: #f5f5f5;
+                color: #9aa5b1;
+                border-style: dashed;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
+
+            .rts-tool-link.disabled:hover {
+                background: #f5f5f5;
+                border-color: rgba(148, 163, 184, 0.7);
+                box-shadow: none;
+            }
+
+            .rts-tool-icon {
+                width: 34px;
+                height: 34px;
+                border-radius: 999px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.25rem;
+                flex-shrink: 0;
+                background: #ffffff;
+                border: 1px solid rgba(148, 163, 184, 0.6);
+            }
+
+            .rts-tool-text {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+
+            .rts-tool-label {
+                font-size: 0.95rem;
+                font-weight: 500;
+            }
+
+            .rts-tool-hint {
+                font-size: 0.8rem;
+                color: #7b8794;
+            }
+
+            @media (max-width: 640px) {
+                .rts-tools-container {
+                    margin: 1rem;
+                    padding: 1.1rem;
+                }
+
+                .rts-tools-title {
+                    font-size: 1.3rem;
+                }
+            }
+        `;
+
+        const style = document.createElement('style');
+        style.id = 'rts-tools-ux-style';
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    function buildUI() {
+        const div = document.createElement('div');
+        div.className = 'rts-tools-container';
+
+        const header = document.createElement('div');
+        header.className = 'rts-tools-header';
+
+        const titleGroup = document.createElement('div');
+
+        const title = document.createElement('div');
+        title.className = 'rts-tools-title';
+        title.textContent = 'Herramientas';
+
+        const subtitle = document.createElement('div');
+        subtitle.className = 'rts-tools-subtitle';
+        subtitle.textContent = 'Accesos rapidos a las funciones de RemoteTech para tecnicos.';
+
+        titleGroup.appendChild(title);
+        titleGroup.appendChild(subtitle);
+        header.appendChild(titleGroup);
+
+        const list = document.createElement('ul');
+        list.className = 'rts-tools-grid';
+        list.id = 'rts-main-list';
+
+        div.appendChild(header);
+        div.appendChild(list);
+
+        return div;
+    }
+
+    function renderList(ul, items, filter) {
+        ul.textContent = '';
+        const normalizedFilter = (filter || '').toLowerCase();
+
+        items
+            .filter(tool => tool.label.toLowerCase().includes(normalizedFilter))
+            .forEach(tool =>
